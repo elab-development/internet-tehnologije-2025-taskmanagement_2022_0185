@@ -1,1 +1,7 @@
 push.sh
+node_modules
+.env
+.next
+backend/node_modules
+backend/.next
+backend/.env
