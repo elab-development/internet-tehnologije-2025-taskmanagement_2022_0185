@@ -9,6 +9,7 @@ RUN apt-get update -y \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma
 RUN npm install
 
 COPY . .
