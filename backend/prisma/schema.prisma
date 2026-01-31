@@ -14,4 +14,46 @@ model User {
   firstName      String?
   lastName       String?
   createdAt      DateTime @default(now())
+  teamsCreated   Team[]
+  memberships    TeamMember[]
+  taskLists      TaskList[]
+}
+
+model Team {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  description     String?
+  createdAt       DateTime     @default(now())
+  createdByUserId String       @db.Uuid
+  createdByUser   User         @relation(fields: [createdByUserId], references: [id])
+  members         TeamMember[]
+  taskLists       TaskList[]
+}
+
+model TeamMember {
+  id       String         @id @default(uuid()) @db.Uuid
+  teamId   String         @db.Uuid
+  userId   String         @db.Uuid
+  role     TeamMemberRole
+  joinedAt DateTime       @default(now())
+  team     Team           @relation(fields: [teamId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+model TaskList {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  ownerUserId String?  @db.Uuid
+  teamId      String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  archived    Boolean  @default(false)
+  ownerUser   User?    @relation(fields: [ownerUserId], references: [id])
+  team        Team?    @relation(fields: [teamId], references: [id])
+}
+
+enum TeamMemberRole {
+  OWNER
+  MEMBER
 }
