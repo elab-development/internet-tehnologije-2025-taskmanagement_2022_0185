@@ -33,11 +33,15 @@ export function signToken(userId: string) {
 
 export function verifyToken(token: string): TokenPayload {
   const secret = getJwtSecret();
-  const payload = jwt.verify(token, secret);
-  if (typeof payload === "string" || !payload.sub) {
+  try {
+    const payload = jwt.verify(token, secret);
+    if (typeof payload === "string" || !payload.sub) {
+      throw new ApiError(401, "UNAUTHORIZED", "Unauthorized");
+    }
+    return { sub: payload.sub };
+  } catch {
     throw new ApiError(401, "UNAUTHORIZED", "Unauthorized");
   }
-  return { sub: payload.sub };
 }
 
 export async function requireAuthUser(request: NextRequest) {
