@@ -1,12 +1,13 @@
-import type { ValidationDetails } from './types'
 import type { ApiError } from './http'
+import type { ValidationDetails } from './types'
 
 const CODE_MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS: 'Pogrešan email ili lozinka.',
+  INVALID_CREDENTIALS: 'Pogresan email ili lozinka.',
   EMAIL_IN_USE: 'Email je vec u upotrebi.',
   VALIDATION_ERROR: 'Proverite uneta polja.',
   UNAUTHORIZED: 'Morate biti prijavljeni.',
-  FORBIDDEN: 'Nemate dozvolu za ovu akciju.'
+  FORBIDDEN: 'Nemate dozvolu za ovu akciju.',
+  LIST_NOT_EMPTY: 'List contains tasks and cannot be deleted.'
 }
 
 export function mapApiCodeToMessage(code: string, fallbackMessage: string) {
@@ -29,4 +30,3 @@ export function firstValidationMessage(details: ValidationDetails): string | nul
   const firstEntry = Object.values(details)[0]
   return firstEntry ?? null
 }
-
