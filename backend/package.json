@@ -8,7 +8,12 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",
@@ -25,6 +30,7 @@
     "@types/react": "18.2.66",
     "@types/react-dom": "18.2.22",
     "prisma": "^5.10.2",
-    "typescript": "5.4.5"
+    "typescript": "5.4.5",
+    "vitest": "^1.6.0"
   }
 }
