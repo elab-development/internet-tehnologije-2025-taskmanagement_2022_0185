@@ -78,7 +78,14 @@ export async function DELETE(
     const currentUser = await requireAuthUser(request);
     await getTaskListOrThrow(params.id, currentUser.id);
 
-    // LIST_NOT_EMPTY check will be added in B4 when Task table exists.
+    const taskCount = await prisma.task.count({
+      where: { listId: params.id }
+    });
+
+    if (taskCount > 0) {
+      throw new ApiError(409, "LIST_NOT_EMPTY", "Task list is not empty");
+    }
+
     await prisma.taskList.delete({
       where: { id: params.id }
     });

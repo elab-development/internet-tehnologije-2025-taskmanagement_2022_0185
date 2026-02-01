@@ -51,9 +51,40 @@ model TaskList {
   archived    Boolean  @default(false)
   ownerUser   User?    @relation(fields: [ownerUserId], references: [id])
   team        Team?    @relation(fields: [teamId], references: [id])
+  tasks       Task[]
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  dueDate     DateTime?
+  priority    TaskPriority
+  status      TaskStatus
+  listId      String       @db.Uuid
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  list        TaskList     @relation(fields: [listId], references: [id])
+
+  @@index([listId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
 }
 
 enum TeamMemberRole {
   OWNER
   MEMBER
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
 }
