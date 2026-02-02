@@ -7,7 +7,10 @@ const CODE_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: 'Proverite uneta polja.',
   UNAUTHORIZED: 'Morate biti prijavljeni.',
   FORBIDDEN: 'Nemate dozvolu za ovu akciju.',
-  LIST_NOT_EMPTY: 'List contains tasks and cannot be deleted.'
+  LIST_NOT_EMPTY: 'List contains tasks and cannot be deleted.',
+  OWNER_MUST_TRANSFER: 'You must transfer ownership before removing the last owner.',
+  ALREADY_MEMBER: 'User is already a member.',
+  USER_NOT_FOUND: 'User not found.'
 }
 
 export function mapApiCodeToMessage(code: string, fallbackMessage: string) {

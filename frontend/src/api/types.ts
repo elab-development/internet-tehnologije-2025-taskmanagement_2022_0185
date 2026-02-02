@@ -25,6 +25,20 @@ export interface TeamMembership {
   myRole: TeamMemberRole
 }
 
+export interface TeamMemberUser {
+  id: string
+  email: string
+  firstName: string | null
+  lastName: string | null
+}
+
+export interface TeamMember {
+  id: string
+  role: TeamMemberRole
+  joinedAt: string
+  user: TeamMemberUser
+}
+
 export interface TaskList {
   id: string
   name: string
