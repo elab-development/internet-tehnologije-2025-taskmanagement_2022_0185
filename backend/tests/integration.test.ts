@@ -633,4 +633,66 @@ describe("Teams and members", () => {
     });
     await assertError(ownerLeave, 409, "OWNER_MUST_TRANSFER");
   });
+
+  it("owner can delete team and cascade team task lists and tasks", async () => {
+    const owner = await createUserAndLogin("delete-team-owner");
+    const memberUser = await createUser(uniqueEmail("delete-team-member"), PASSWORD, "Mem", "User");
+    const memberToken = await login(memberUser.email, PASSWORD);
+    const team = await createTeam(owner.token, "Delete Team", "desc");
+
+    await addMember(owner.token, team.id, memberUser.email);
+
+    const teamList = await createTeamList(owner.token, team.id, "Team List");
+    await createTask(owner.token, teamList.id, {
+      title: "Task in team list",
+      description: null,
+      dueDate: null,
+      priority: "LOW",
+      status: "TODO"
+    });
+
+    const deleteResponse = await apiFetch(`/api/teams/${team.id}`, {
+      method: "DELETE",
+      headers: authHeader(owner.token)
+    });
+    expect(deleteResponse.status).toBe(200);
+    expect((deleteResponse.json as { ok: boolean }).ok).toBe(true);
+
+    const ownerTeams = await apiFetch("/api/teams", {
+      headers: authHeader(owner.token)
+    });
+    const ownerItems = (ownerTeams.json as { items: { team: { id: string } }[] }).items;
+    expect(ownerItems.some((item) => item.team.id === team.id)).toBe(false);
+
+    const memberTeams = await apiFetch("/api/teams", {
+      headers: authHeader(memberToken)
+    });
+    const memberItems = (memberTeams.json as { items: { team: { id: string } }[] }).items;
+    expect(memberItems.some((item) => item.team.id === team.id)).toBe(false);
+
+    const detailsAfterDelete = await apiFetch(`/api/teams/${team.id}`, {
+      headers: authHeader(owner.token)
+    });
+    await assertError(detailsAfterDelete, 404, "NOT_FOUND");
+
+    const tasksAfterDelete = await apiFetch(`/api/tasks?listId=${teamList.id}`, {
+      headers: authHeader(owner.token)
+    });
+    await assertError(tasksAfterDelete, 404, "NOT_FOUND");
+  });
+
+  it("non-owner cannot delete team", async () => {
+    const owner = await createUserAndLogin("delete-team-owner-guard");
+    const memberUser = await createUser(uniqueEmail("delete-team-member-guard"), PASSWORD, "Mem", "User");
+    const memberToken = await login(memberUser.email, PASSWORD);
+    const team = await createTeam(owner.token, "Owner Guard Team", "desc");
+
+    await addMember(owner.token, team.id, memberUser.email);
+
+    const memberDelete = await apiFetch(`/api/teams/${team.id}`, {
+      method: "DELETE",
+      headers: authHeader(memberToken)
+    });
+    await assertError(memberDelete, 403, "FORBIDDEN");
+  });
 });
