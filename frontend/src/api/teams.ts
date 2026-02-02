@@ -71,3 +71,9 @@ export function leaveTeam(teamId: string) {
     method: 'POST'
   })
 }
+
+export function deleteTeam(teamId: string) {
+  return http<{ ok: boolean }>(`/api/teams/${teamId}`, {
+    method: 'DELETE'
+  })
+}

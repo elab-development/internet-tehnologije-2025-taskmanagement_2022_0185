@@ -5,6 +5,7 @@ import { firstValidationMessage, extractValidationDetails, mapApiCodeToMessage }
 import { isApiError } from '../api/http'
 import {
   addTeamMember,
+  deleteTeam,
   getTeamDetails,
   leaveTeam,
   removeTeamMember,
@@ -49,6 +50,9 @@ export default function TeamDetails() {
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false)
   const [leaveError, setLeaveError] = useState<string | null>(null)
   const [isLeavingTeam, setIsLeavingTeam] = useState(false)
+  const [isDeleteTeamModalOpen, setIsDeleteTeamModalOpen] = useState(false)
+  const [deleteTeamError, setDeleteTeamError] = useState<string | null>(null)
+  const [isDeletingTeam, setIsDeletingTeam] = useState(false)
 
   const loadTeam = useCallback(async () => {
     if (!teamId) {
@@ -129,6 +133,15 @@ export default function TeamDetails() {
 
     setIsLeaveModalOpen(false)
     setLeaveError(null)
+  }
+
+  const closeDeleteTeamModal = () => {
+    if (isDeletingTeam) {
+      return
+    }
+
+    setIsDeleteTeamModalOpen(false)
+    setDeleteTeamError(null)
   }
 
   const handleAddMember = async (event: FormEvent<HTMLFormElement>) => {
@@ -254,6 +267,29 @@ export default function TeamDetails() {
     }
   }
 
+  const handleDeleteTeam = async () => {
+    if (!teamId) {
+      return
+    }
+
+    setDeleteTeamError(null)
+    setFeedback(null)
+    setIsDeletingTeam(true)
+
+    try {
+      await deleteTeam(teamId)
+      navigate('/app/teams', { replace: true })
+    } catch (error) {
+      if (isApiError(error)) {
+        setDeleteTeamError(mapApiCodeToMessage(error.code, error.message))
+      } else {
+        setDeleteTeamError('Failed to delete team.')
+      }
+    } finally {
+      setIsDeletingTeam(false)
+    }
+  }
+
   if (isLoadingTeam) {
     return (
       <section className="space-y-4">
@@ -357,17 +393,33 @@ export default function TeamDetails() {
           Back to teams
         </Link>
 
-        <Button
-          disabled={isLeavingTeam}
-          onClick={() => {
-            setLeaveError(null)
-            setIsLeaveModalOpen(true)
-          }}
-          type="button"
-          variant="secondary"
-        >
-          Leave team
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={isLeavingTeam || isDeletingTeam}
+            onClick={() => {
+              setLeaveError(null)
+              setIsLeaveModalOpen(true)
+            }}
+            type="button"
+            variant="secondary"
+          >
+            Leave team
+          </Button>
+          {isOwner ? (
+            <Button
+              className="border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50"
+              disabled={isLeavingTeam || isDeletingTeam}
+              onClick={() => {
+                setDeleteTeamError(null)
+                setIsDeleteTeamModalOpen(true)
+              }}
+              type="button"
+              variant="secondary"
+            >
+              Delete team
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <Modal
@@ -449,6 +501,37 @@ export default function TeamDetails() {
         {leaveError ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{leaveError}</div>
         ) : null}
+      </Modal>
+
+      <Modal
+        closeDisabled={isDeletingTeam}
+        description="Deleting this team permanently removes team task lists and all tasks in those lists."
+        footer={
+          <>
+            <Button disabled={isDeletingTeam} onClick={closeDeleteTeamModal} type="button" variant="secondary">
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-500"
+              isLoading={isDeletingTeam}
+              onClick={handleDeleteTeam}
+              type="button"
+            >
+              Delete team
+            </Button>
+          </>
+        }
+        isOpen={isDeleteTeamModalOpen}
+        onClose={closeDeleteTeamModal}
+        title="Delete team"
+      >
+        {deleteTeamError ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{deleteTeamError}</div>
+        ) : (
+          <p className="text-sm text-slate-600">
+            This action cannot be undone. Team members, team task lists, and all team tasks will be removed.
+          </p>
+        )}
       </Modal>
     </section>
   )
