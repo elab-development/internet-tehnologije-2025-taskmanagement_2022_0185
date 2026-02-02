@@ -13,9 +13,7 @@ export default function Profile() {
       <header className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Profile</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900">My profile</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Podaci dolaze iz <code>/api/auth/me</code> preko AuthContext-a.
-        </p>
+        
       </header>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
