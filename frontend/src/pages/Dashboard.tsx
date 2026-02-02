@@ -16,6 +16,7 @@ import Button from '../components/Button'
 import Modal from '../components/Modal'
 import SidebarSection from '../components/SidebarSection'
 import Spinner from '../components/Spinner'
+import TaskPanel from '../components/TaskPanel'
 import TaskListItem, { type SidebarTaskList } from '../components/TaskListItem'
 import TextField from '../components/TextField'
 
@@ -418,50 +419,7 @@ export default function Dashboard() {
         )}
       </aside>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        {isLoadingLists && taskLists.length > 0 ? (
-          <div className="mb-4">
-            <Spinner label="Refreshing lists..." />
-          </div>
-        ) : null}
-
-        {hasNoLists ? (
-          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
-            You don't have any lists yet. Create one to get started.
-          </div>
-        ) : activeList ? (
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Active list</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-900">{activeList.name}</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                {activeList.archived
-                  ? 'This list is archived. You can still view it and unarchive at any time.'
-                  : 'Tasks panel arrives in F4. Select a list to prepare task work.'}
-              </p>
-            </div>
-
-            <dl className="grid gap-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-slate-500">Scope</dt>
-                <dd className="font-semibold text-slate-900">{activeList.scope}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Status</dt>
-                <dd className="font-semibold text-slate-900">{activeList.archived ? 'Archived' : 'Active'}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Team</dt>
-                <dd className="font-semibold text-slate-900">{activeList.teamName ?? '-'}</dd>
-              </div>
-            </dl>
-          </div>
-        ) : (
-          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
-            Select a list.
-          </div>
-        )}
-      </div>
+      <TaskPanel activeList={activeList} hasNoLists={hasNoLists} isLoadingLists={isLoadingLists} />
 
       <Modal
         closeDisabled={isCreatingList}
