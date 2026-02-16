@@ -2,51 +2,88 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApiError, handleApiError } from "@/lib/api";
 import { hashPassword } from "@/lib/auth";
-import { isNonEmpty, isOptionalNonEmpty, isValidEmail, normalizeEmail } from "@/lib/validation";
+import { isValidEmail, normalizeEmail } from "@/lib/validation";
+import { z } from "zod";
+import { defineRouteContract,
+  registerRouteContract, parseJsonBodyOrThrow } from "@/lib/openapi/contract";
+import { errorResponseSchema, userSchema } from "@/lib/openapi/models";
 
-type RegisterBody = {
-  email?: unknown;
-  password?: unknown;
-  firstName?: unknown;
-  lastName?: unknown;
-};
+const registerBodySchema = z.object({
+  email: z
+    .string({ required_error: "Invalid email", invalid_type_error: "Invalid email" })
+    .transform((value) => value.trim())
+    .refine((value) => isValidEmail(value), "Invalid email"),
+  password: z
+    .string({
+      required_error: "Password must be at least 8 characters",
+      invalid_type_error: "Password must be at least 8 characters"
+    })
+    .refine((value) => value.length >= 8, "Password must be at least 8 characters"),
+  firstName: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value) => (typeof value === "string" ? value.trim() : undefined))
+    .refine(
+      (value) => value === undefined || value.length > 0,
+      "First name must be at least 1 character"
+    ),
+  lastName: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value) => (typeof value === "string" ? value.trim() : undefined))
+    .refine(
+      (value) => value === undefined || value.length > 0,
+      "Last name must be at least 1 character"
+    )
+});
+
+const registerResponseSchema = z.object({
+  user: userSchema
+});
+
+const openApi = defineRouteContract({
+  post: {
+    summary: "Register a new user account.",
+    tags: ["Auth"],
+    auth: "public",
+    request: {
+      body: registerBodySchema
+    },
+    responses: [
+      {
+        status: 201,
+        description: "User registered.",
+        schema: registerResponseSchema
+      },
+      {
+        status: 400,
+        description: "Invalid JSON body",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_JSON"
+      },
+      {
+        status: 409,
+        description: "Email already in use",
+        schema: errorResponseSchema,
+        errorCode: "EMAIL_IN_USE"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
+  }
+});
 
 export async function POST(request: NextRequest) {
   try {
-    let body: RegisterBody;
-    try {
-      body = (await request.json()) as RegisterBody;
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "Invalid JSON body");
-    }
-    const rawEmail = typeof body.email === "string" ? body.email.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    const firstName = typeof body.firstName === "string" ? body.firstName.trim() : undefined;
-    const lastName = typeof body.lastName === "string" ? body.lastName.trim() : undefined;
-
-    const details: Record<string, string> = {};
-
-    if (!isNonEmpty(rawEmail) || !isValidEmail(rawEmail)) {
-      details.email = "Invalid email";
-    }
-
-    if (!isNonEmpty(password) || password.length < 8) {
-      details.password = "Password must be at least 8 characters";
-    }
-
-    if (!isOptionalNonEmpty(firstName)) {
-      details.firstName = "First name must be at least 1 character";
-    }
-
-    if (!isOptionalNonEmpty(lastName)) {
-      details.lastName = "Last name must be at least 1 character";
-    }
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
-
-    const email = normalizeEmail(rawEmail);
+    const body = await parseJsonBodyOrThrow(request, registerBodySchema);
+    const email = normalizeEmail(body.email as string);
+    const password = body.password as string;
+    const firstName = body.firstName as string | undefined;
+    const lastName = body.lastName as string | undefined;
     const existing = await prisma.user.findUnique({
       where: { email }
     });
@@ -77,3 +114,9 @@ export async function POST(request: NextRequest) {
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+
+

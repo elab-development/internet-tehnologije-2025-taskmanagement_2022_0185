@@ -11,9 +11,10 @@ RUN apt-get update -y \
 
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm install --ignore-scripts
 
 COPY . .
+RUN npm rebuild && npm run postinstall
 
 EXPOSE 3000
 

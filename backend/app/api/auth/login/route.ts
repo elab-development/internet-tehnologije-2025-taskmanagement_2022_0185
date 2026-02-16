@@ -2,39 +2,71 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApiError, handleApiError } from "@/lib/api";
 import { signToken, verifyPassword } from "@/lib/auth";
-import { isNonEmpty, isValidEmail, normalizeEmail } from "@/lib/validation";
+import { isValidEmail, normalizeEmail } from "@/lib/validation";
+import { z } from "zod";
+import { defineRouteContract,
+  registerRouteContract, parseJsonBodyOrThrow } from "@/lib/openapi/contract";
+import { errorResponseSchema, userSchema } from "@/lib/openapi/models";
 
-type LoginBody = {
-  email?: unknown;
-  password?: unknown;
-};
+const loginBodySchema = z.object({
+  email: z
+    .string({ required_error: "Invalid email", invalid_type_error: "Invalid email" })
+    .transform((value) => value.trim())
+    .refine((value) => isValidEmail(value), "Invalid email"),
+  password: z
+    .string({
+      required_error: "Password must be at least 8 characters",
+      invalid_type_error: "Password must be at least 8 characters"
+    })
+    .refine((value) => value.length >= 8, "Password must be at least 8 characters")
+});
+
+const loginResponseSchema = z.object({
+  token: z.string(),
+  user: userSchema
+});
+
+const openApi = defineRouteContract({
+  post: {
+    summary: "Login and receive JWT token.",
+    tags: ["Auth"],
+    auth: "public",
+    request: {
+      body: loginBodySchema
+    },
+    responses: [
+      {
+        status: 200,
+        description: "Login successful.",
+        schema: loginResponseSchema
+      },
+      {
+        status: 400,
+        description: "Invalid JSON body",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_JSON"
+      },
+      {
+        status: 401,
+        description: "Invalid credentials",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_CREDENTIALS"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
+  }
+});
 
 export async function POST(request: NextRequest) {
   try {
-    let body: LoginBody;
-    try {
-      body = (await request.json()) as LoginBody;
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "Invalid JSON body");
-    }
-    const rawEmail = typeof body.email === "string" ? body.email.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-
-    const details: Record<string, string> = {};
-
-    if (!isNonEmpty(rawEmail) || !isValidEmail(rawEmail)) {
-      details.email = "Invalid email";
-    }
-
-    if (!isNonEmpty(password) || password.length < 8) {
-      details.password = "Password must be at least 8 characters";
-    }
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
-
-    const email = normalizeEmail(rawEmail);
+    const body = await parseJsonBodyOrThrow(request, loginBodySchema);
+    const email = normalizeEmail(body.email as string);
+    const password = body.password as string;
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -64,3 +96,9 @@ export async function POST(request: NextRequest) {
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+
+

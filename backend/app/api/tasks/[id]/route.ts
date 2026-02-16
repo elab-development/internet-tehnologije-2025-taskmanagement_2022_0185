@@ -1,50 +1,160 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { ApiError, handleApiError } from "@/lib/api";
+import { handleApiError } from "@/lib/api";
 import { requireAuthUser } from "@/lib/auth";
 import { getTaskOrThrow, toTaskDto } from "@/lib/tasks";
 import { prisma } from "@/lib/prisma";
+import {
+  defineRouteContract,
+  registerRouteContract,
+  parseJsonBodyOrThrow,
+  parseParamsOrThrow
+} from "@/lib/openapi/contract";
+import { errorResponseSchema, taskSchema } from "@/lib/openapi/models";
+import { z } from "zod";
 
-const statusValues = ["TODO", "IN_PROGRESS", "DONE"] as const;
-const priorityValues = ["LOW", "MEDIUM", "HIGH"] as const;
+const taskIdParamsSchema = z.object({
+  id: z.string()
+});
 
-type TaskStatus = (typeof statusValues)[number];
-type TaskPriority = (typeof priorityValues)[number];
+const updateTaskBodySchema = z
+  .object({
+    title: z.preprocess(
+      (value) => value,
+      z
+        .string({ invalid_type_error: "Title must be a string" })
+        .transform((current) => current.trim())
+        .refine((current) => current.length >= 2, "Title must be at least 2 characters")
+        .optional()
+    ),
+    description: z
+      .union([z.string(), z.null()], {
+        errorMap: () => ({ message: "Description must be a string" })
+      })
+      .optional()
+      .transform((value) => (typeof value === "string" ? value.trim() : value)),
+    dueDate: z
+      .union([z.string(), z.null()], {
+        errorMap: () => ({ message: "dueDate must be a valid ISO date string" })
+      })
+      .optional()
+      .refine(
+        (value) =>
+          value === undefined || value === null || !Number.isNaN(new Date(value).getTime()),
+        "dueDate must be a valid ISO date string"
+      ),
+    priority: z
+      .enum(["LOW", "MEDIUM", "HIGH"], {
+        errorMap: () => ({ message: "Priority must be LOW, MEDIUM, or HIGH" })
+      })
+      .optional(),
+    status: z
+      .enum(["TODO", "IN_PROGRESS", "DONE"], {
+        errorMap: () => ({ message: "Status must be TODO, IN_PROGRESS, or DONE" })
+      })
+      .optional()
+  })
+  .superRefine((value, ctx) => {
+    const hasUpdates =
+      value.title !== undefined ||
+      value.description !== undefined ||
+      value.dueDate !== undefined ||
+      value.priority !== undefined ||
+      value.status !== undefined;
 
-type UpdateTaskBody = {
-  title?: unknown;
-  description?: unknown;
-  dueDate?: unknown;
-  priority?: unknown;
-  status?: unknown;
-};
+    if (!hasUpdates) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["body"],
+        message: "No valid fields to update"
+      });
+    }
+  });
 
-function parseDueDate(value: unknown, details: Record<string, string>) {
-  if (value === undefined) {
-    return undefined;
+const taskItemResponseSchema = z.object({
+  item: taskSchema
+});
+
+const openApi = defineRouteContract({
+  patch: {
+    summary: "Update an existing task.",
+    tags: ["Tasks"],
+    auth: "bearer",
+    request: {
+      params: taskIdParamsSchema,
+      body: updateTaskBodySchema
+    },
+    responses: [
+      {
+        status: 200,
+        description: "Task updated.",
+        schema: taskItemResponseSchema
+      },
+      {
+        status: 400,
+        description: "Invalid JSON body",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_JSON"
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
+  },
+  delete: {
+    summary: "Delete a task.",
+    tags: ["Tasks"],
+    auth: "bearer",
+    request: {
+      params: taskIdParamsSchema
+    },
+    responses: [
+      {
+        status: 204,
+        description: "Task deleted."
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      }
+    ]
   }
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "string") {
-    details.dueDate = "dueDate must be a valid ISO date string";
-    return undefined;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    details.dueDate = "dueDate must be a valid ISO date string";
-    return undefined;
-  }
-  return parsed;
-}
-
-function isStatus(value: unknown): value is TaskStatus {
-  return typeof value === "string" && statusValues.includes(value as TaskStatus);
-}
-
-function isPriority(value: unknown): value is TaskPriority {
-  return typeof value === "string" && priorityValues.includes(value as TaskPriority);
-}
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -52,75 +162,16 @@ export async function PATCH(
 ) {
   try {
     const currentUser = await requireAuthUser(request);
-    const task = await getTaskOrThrow(params.id, currentUser.id);
-    let body: UpdateTaskBody;
-
-    try {
-      body = (await request.json()) as UpdateTaskBody;
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    const title =
-      body.title === undefined
-        ? undefined
-        : typeof body.title === "string"
-          ? body.title.trim()
-          : undefined;
-    const description =
-      body.description === undefined
-        ? undefined
-        : body.description === null
-          ? null
-          : typeof body.description === "string"
-            ? body.description.trim()
-            : undefined;
-    const priority = body.priority;
-    const status = body.status;
-
-    const details: Record<string, string> = {};
-
-    if (body.title !== undefined && typeof body.title !== "string") {
-      details.title = "Title must be a string";
-    } else if (title !== undefined && title.length < 2) {
-      details.title = "Title must be at least 2 characters";
-    }
-
-    if (
-      body.description !== undefined &&
-      body.description !== null &&
-      typeof body.description !== "string"
-    ) {
-      details.description = "Description must be a string";
-    }
-
-    if (priority !== undefined && !isPriority(priority)) {
-      details.priority = "Priority must be LOW, MEDIUM, or HIGH";
-    }
-
-    if (status !== undefined && !isStatus(status)) {
-      details.status = "Status must be TODO, IN_PROGRESS, or DONE";
-    }
-
-    const dueDate = parseDueDate(body.dueDate, details);
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
+    const parsedParams = parseParamsOrThrow(params, taskIdParamsSchema);
+    const task = await getTaskOrThrow(parsedParams.id, currentUser.id);
+    const body = await parseJsonBodyOrThrow(request, updateTaskBodySchema);
+    const title = body.title as string | undefined;
+    const description = body.description as string | null | undefined;
+    const dueDate = body.dueDate as string | null | undefined;
+    const priority = body.priority as "LOW" | "MEDIUM" | "HIGH" | undefined;
+    const status = body.status as "TODO" | "IN_PROGRESS" | "DONE" | undefined;
 
     const updates: Prisma.TaskUpdateInput = {};
-    const hasUpdates =
-      title !== undefined ||
-      description !== undefined ||
-      dueDate !== undefined ||
-      priority !== undefined ||
-      status !== undefined;
-
-    if (!hasUpdates) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", {
-        body: "No valid fields to update"
-      });
-    }
 
     if (title !== undefined) {
       updates.title = title;
@@ -131,15 +182,15 @@ export async function PATCH(
     }
 
     if (dueDate !== undefined) {
-      updates.dueDate = dueDate;
+      updates.dueDate = dueDate === null ? null : new Date(dueDate);
     }
 
     if (priority !== undefined) {
-      updates.priority = priority as TaskPriority;
+      updates.priority = priority;
     }
 
     if (status !== undefined) {
-      updates.status = status as TaskStatus;
+      updates.status = status;
       if (status === "DONE" && task.status !== "DONE") {
         updates.completedAt = new Date();
       } else if (status !== "DONE" && task.status === "DONE") {
@@ -175,7 +226,8 @@ export async function DELETE(
 ) {
   try {
     const currentUser = await requireAuthUser(request);
-    const task = await getTaskOrThrow(params.id, currentUser.id);
+    const parsedParams = parseParamsOrThrow(params, taskIdParamsSchema);
+    const task = await getTaskOrThrow(parsedParams.id, currentUser.id);
 
     await prisma.task.delete({
       where: { id: task.id }
@@ -186,3 +238,9 @@ export async function DELETE(
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+
+

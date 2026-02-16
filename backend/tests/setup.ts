@@ -14,7 +14,7 @@ import {
 } from "./helpers";
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "test";
+  Object.assign(process.env, { NODE_ENV: "test" });
   await startTestServer();
 });
 

@@ -44,6 +44,16 @@ Health check:
 curl http://localhost:3000/api/health
 ```
 
+Swagger UI:
+```
+http://localhost:3000/api/docs
+```
+
+OpenAPI JSON:
+```
+http://localhost:3000/api/openapi
+```
+
 ## Docker
 
 From repo root:
@@ -58,6 +68,29 @@ Health check:
 ```
 curl http://localhost:3000/api/health
 ```
+
+Swagger UI:
+```
+http://localhost:3000/api/docs
+```
+
+OpenAPI JSON:
+```
+http://localhost:3000/api/openapi
+```
+
+## API docs (Swagger / OpenAPI)
+
+OpenAPI is generated at runtime from co-located Zod schemas and `openApi` contracts defined directly in each API route file (`backend/app/api/**/route.ts`).  
+Route discovery is auto-generated via `backend/scripts/generate-openapi-route-index.mjs` into `backend/.generated/openapi-route-index.ts`, so no manual central path/schema mapping file is maintained.
+
+- Swagger UI URL: `http://localhost:3000/api/docs`
+- OpenAPI JSON URL: `http://localhost:3000/api/openapi`
+
+JWT in Swagger UI:
+1. Call `POST /api/auth/login` and copy the `token` value.
+2. Open Swagger UI and click `Authorize`.
+3. Paste `Bearer <TOKEN>` and confirm.
 
 ## Demo credentials (seed)
 

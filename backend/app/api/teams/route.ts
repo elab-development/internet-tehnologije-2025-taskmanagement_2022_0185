@@ -1,13 +1,91 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ApiError, handleApiError } from "@/lib/api";
+import { handleApiError } from "@/lib/api";
 import { requireAuthUser } from "@/lib/auth";
 import { toTeamDto } from "@/lib/teams";
+import { defineRouteContract,
+  registerRouteContract, parseJsonBodyOrThrow } from "@/lib/openapi/contract";
+import {
+  errorResponseSchema,
+  teamMembershipSchema,
+  teamSchema
+} from "@/lib/openapi/models";
+import { z } from "zod";
 
-type CreateTeamBody = {
-  name?: unknown;
-  description?: unknown;
-};
+const createTeamBodySchema = z.object({
+  name: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : ""),
+    z.string().min(2, "Name must be at least 2 characters")
+  ),
+  description: z
+    .union([z.string(), z.null()], {
+      errorMap: () => ({ message: "Description must be a string" })
+    })
+    .optional()
+    .transform((value) => (typeof value === "string" ? value.trim() : undefined))
+});
+
+const teamsResponseSchema = z.object({
+  items: z.array(teamMembershipSchema)
+});
+
+const teamResponseSchema = z.object({
+  team: teamSchema
+});
+
+const openApi = defineRouteContract({
+  get: {
+    summary: "List teams where current user is a member.",
+    tags: ["Teams"],
+    auth: "bearer",
+    responses: [
+      {
+        status: 200,
+        description: "Team memberships.",
+        schema: teamsResponseSchema
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      }
+    ]
+  },
+  post: {
+    summary: "Create team and add current user as OWNER.",
+    tags: ["Teams"],
+    auth: "bearer",
+    request: {
+      body: createTeamBodySchema
+    },
+    responses: [
+      {
+        status: 201,
+        description: "Team created.",
+        schema: teamResponseSchema
+      },
+      {
+        status: 400,
+        description: "Invalid JSON body",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_JSON"
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
+  }
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,45 +122,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await requireAuthUser(request);
-    let body: CreateTeamBody;
-
-    try {
-      body = (await request.json()) as CreateTeamBody;
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const description =
-      body.description === undefined
-        ? undefined
-        : typeof body.description === "string"
-          ? body.description.trim()
-          : undefined;
-
-    const details: Record<string, string> = {};
-
-    if (name.length < 2) {
-      details.name = "Name must be at least 2 characters";
-    }
-
-    if (
-      body.description !== undefined &&
-      body.description !== null &&
-      typeof body.description !== "string"
-    ) {
-      details.description = "Description must be a string";
-    }
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
+    const body = await parseJsonBodyOrThrow(request, createTeamBodySchema);
+    const name = body.name as string;
+    const description = body.description as string | undefined;
 
     const team = await prisma.$transaction(async (tx) => {
       const createdTeam = await tx.team.create({
         data: {
           name,
-          description: description && description.length > 0 ? description : null,
+          description:
+            description && description.length > 0
+              ? description
+              : null,
           createdByUserId: currentUser.id
         },
         select: {
@@ -110,3 +161,9 @@ export async function POST(request: NextRequest) {
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+
+

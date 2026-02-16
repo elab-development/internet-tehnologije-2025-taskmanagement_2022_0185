@@ -1,8 +1,95 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApiError, handleApiError } from "@/lib/api";
+import { handleApiError } from "@/lib/api";
 import { requireAuthUser } from "@/lib/auth";
 import { requireTeamMember, requireTeamOwner, toTeamDto } from "@/lib/teams";
 import { prisma } from "@/lib/prisma";
+import { defineRouteContract,
+  registerRouteContract, parseParamsOrThrow } from "@/lib/openapi/contract";
+import {
+  errorResponseSchema,
+  okResponseSchema,
+  teamMemberSchema,
+  teamSchema
+} from "@/lib/openapi/models";
+import { z } from "zod";
+
+const teamParamsSchema = z.object({
+  teamId: z.string()
+});
+
+const teamDetailsResponseSchema = z.object({
+  team: teamSchema,
+  members: z.array(teamMemberSchema)
+});
+
+const openApi = defineRouteContract({
+  get: {
+    summary: "Get team details and members.",
+    tags: ["Teams"],
+    auth: "bearer",
+    request: {
+      params: teamParamsSchema
+    },
+    responses: [
+      {
+        status: 200,
+        description: "Team details with members.",
+        schema: teamDetailsResponseSchema
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      }
+    ]
+  },
+  delete: {
+    summary: "Delete team (owner only).",
+    tags: ["Teams"],
+    auth: "bearer",
+    request: {
+      params: teamParamsSchema
+    },
+    responses: [
+      {
+        status: 200,
+        description: "Team deleted.",
+        schema: okResponseSchema
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      }
+    ]
+  }
+});
 
 export async function GET(
   request: NextRequest,
@@ -10,10 +97,11 @@ export async function GET(
 ) {
   try {
     const currentUser = await requireAuthUser(request);
-    const { team } = await requireTeamMember(params.teamId, currentUser.id);
+    const parsedParams = parseParamsOrThrow(params, teamParamsSchema);
+    const { team } = await requireTeamMember(parsedParams.teamId, currentUser.id);
 
     const members = await prisma.teamMember.findMany({
-      where: { teamId: params.teamId },
+      where: { teamId: parsedParams.teamId },
       select: {
         id: true,
         role: true,
@@ -45,7 +133,8 @@ export async function DELETE(
 ) {
   try {
     const currentUser = await requireAuthUser(request);
-    const { team } = await requireTeamOwner(params.teamId, currentUser.id);
+    const parsedParams = parseParamsOrThrow(params, teamParamsSchema);
+    const { team } = await requireTeamOwner(parsedParams.teamId, currentUser.id);
 
     await prisma.$transaction(async (tx) => {
       const teamLists = await tx.taskList.findMany({
@@ -81,3 +170,8 @@ export async function DELETE(
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+

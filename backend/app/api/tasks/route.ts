@@ -1,86 +1,188 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { ApiError, handleApiError } from "@/lib/api";
+import { handleApiError } from "@/lib/api";
 import { requireAuthUser } from "@/lib/auth";
 import { getTaskListOrThrow } from "@/lib/task-lists";
 import { toTaskDto } from "@/lib/tasks";
 import { prisma } from "@/lib/prisma";
+import {
+  defineRouteContract,
+  registerRouteContract,
+  parseJsonBodyOrThrow,
+  parseQueryOrThrow
+} from "@/lib/openapi/contract";
+import {
+  errorResponseSchema,
+  taskSchema
+} from "@/lib/openapi/models";
+import { z } from "zod";
 
-const statusValues = ["TODO", "IN_PROGRESS", "DONE"] as const;
-const priorityValues = ["LOW", "MEDIUM", "HIGH"] as const;
+const tasksQuerySchema = z.object({
+  listId: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : ""),
+    z.string().min(1, "listId is required")
+  ),
+  status: z
+    .enum(["TODO", "IN_PROGRESS", "DONE"], {
+      errorMap: () => ({ message: "Status must be TODO, IN_PROGRESS, or DONE" })
+    })
+    .optional(),
+  priority: z
+    .enum(["LOW", "MEDIUM", "HIGH"], {
+      errorMap: () => ({ message: "Priority must be LOW, MEDIUM, or HIGH" })
+    })
+    .optional(),
+  q: z
+    .string()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value.trim())),
+  due: z
+    .enum(["all", "soon", "overdue"], {
+      errorMap: () => ({ message: "due must be soon, overdue, or all" })
+    })
+    .optional()
+    .default("all")
+});
 
-type TaskStatus = (typeof statusValues)[number];
-type TaskPriority = (typeof priorityValues)[number];
+const createTaskBodySchema = z.object({
+  listId: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : ""),
+    z.string().min(1, "listId is required")
+  ),
+  title: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : ""),
+    z.string().min(2, "Title must be at least 2 characters")
+  ),
+  description: z
+    .union([z.string(), z.null()], {
+      errorMap: () => ({ message: "Description must be a string" })
+    })
+    .optional()
+    .transform((value) => (typeof value === "string" ? value.trim() : value)),
+  dueDate: z
+    .union([z.string(), z.null()], {
+      errorMap: () => ({ message: "dueDate must be a valid ISO date string" })
+    })
+    .optional()
+    .refine(
+      (value) =>
+        value === undefined || value === null || !Number.isNaN(new Date(value).getTime()),
+      "dueDate must be a valid ISO date string"
+    ),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"], {
+    errorMap: () => ({ message: "Priority must be LOW, MEDIUM, or HIGH" })
+  }),
+  status: z.enum(["TODO", "IN_PROGRESS", "DONE"], {
+    errorMap: () => ({ message: "Status must be TODO, IN_PROGRESS, or DONE" })
+  })
+});
 
-type CreateTaskBody = {
-  listId?: unknown;
-  title?: unknown;
-  description?: unknown;
-  dueDate?: unknown;
-  priority?: unknown;
-  status?: unknown;
-};
+const taskCollectionResponseSchema = z.object({
+  items: z.array(taskSchema)
+});
 
-function parseDueDate(value: unknown, details: Record<string, string>) {
-  if (value === undefined) {
-    return undefined;
+const taskItemResponseSchema = z.object({
+  item: taskSchema
+});
+
+const openApi = defineRouteContract({
+  get: {
+    summary: "List tasks from one list with filters.",
+    tags: ["Tasks"],
+    auth: "bearer",
+    request: {
+      query: tasksQuerySchema
+    },
+    responses: [
+      {
+        status: 200,
+        description: "Tasks that match query filters.",
+        schema: taskCollectionResponseSchema
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Task list not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
+  },
+  post: {
+    summary: "Create a new task.",
+    tags: ["Tasks"],
+    auth: "bearer",
+    request: {
+      body: createTaskBodySchema
+    },
+    responses: [
+      {
+        status: 201,
+        description: "Task created.",
+        schema: taskItemResponseSchema
+      },
+      {
+        status: 400,
+        description: "Invalid JSON body",
+        schema: errorResponseSchema,
+        errorCode: "INVALID_JSON"
+      },
+      {
+        status: 401,
+        description: "Unauthorized",
+        schema: errorResponseSchema,
+        errorCode: "UNAUTHORIZED"
+      },
+      {
+        status: 403,
+        description: "Forbidden",
+        schema: errorResponseSchema,
+        errorCode: "FORBIDDEN"
+      },
+      {
+        status: 404,
+        description: "Task list not found",
+        schema: errorResponseSchema,
+        errorCode: "NOT_FOUND"
+      },
+      {
+        status: 422,
+        description: "Validation error",
+        schema: errorResponseSchema,
+        errorCode: "VALIDATION_ERROR"
+      }
+    ]
   }
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "string") {
-    details.dueDate = "dueDate must be a valid ISO date string";
-    return undefined;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    details.dueDate = "dueDate must be a valid ISO date string";
-    return undefined;
-  }
-  return parsed;
-}
-
-function isStatus(value: unknown): value is TaskStatus {
-  return typeof value === "string" && statusValues.includes(value as TaskStatus);
-}
-
-function isPriority(value: unknown): value is TaskPriority {
-  return typeof value === "string" && priorityValues.includes(value as TaskPriority);
-}
+});
 
 export async function GET(request: NextRequest) {
   try {
     const currentUser = await requireAuthUser(request);
-    const { searchParams } = request.nextUrl;
-    const listId = searchParams.get("listId")?.trim();
-    const statusParam = searchParams.get("status");
-    const priorityParam = searchParams.get("priority");
-    const q = searchParams.get("q")?.trim();
-    const due = searchParams.get("due") ?? "all";
+    const query = parseQueryOrThrow(request, tasksQuerySchema);
+    const listId = query.listId as string;
+    const status = query.status as "TODO" | "IN_PROGRESS" | "DONE" | undefined;
+    const priority = query.priority as "LOW" | "MEDIUM" | "HIGH" | undefined;
+    const q = query.q as string | undefined;
+    const due = query.due as "all" | "soon" | "overdue";
 
-    const details: Record<string, string> = {};
-
-    if (!listId) {
-      details.listId = "listId is required";
-    }
-
-    if (statusParam && !isStatus(statusParam)) {
-      details.status = "Status must be TODO, IN_PROGRESS, or DONE";
-    }
-
-    if (priorityParam && !isPriority(priorityParam)) {
-      details.priority = "Priority must be LOW, MEDIUM, or HIGH";
-    }
-
-    if (due !== "all" && due !== "soon" && due !== "overdue") {
-      details.due = "due must be soon, overdue, or all";
-    }
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
-
-    await getTaskListOrThrow(listId as string, currentUser.id);
+    await getTaskListOrThrow(listId, currentUser.id);
 
     const where: Prisma.TaskWhereInput = {
       listId
@@ -88,12 +190,12 @@ export async function GET(request: NextRequest) {
 
     const and: Prisma.TaskWhereInput[] = [];
 
-    if (statusParam) {
-      and.push({ status: statusParam as TaskStatus });
+    if (status) {
+      and.push({ status });
     }
 
-    if (priorityParam) {
-      and.push({ priority: priorityParam as TaskPriority });
+    if (priority) {
+      and.push({ priority });
     }
 
     if (q) {
@@ -147,60 +249,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await requireAuthUser(request);
-    let body: CreateTaskBody;
-
-    try {
-      body = (await request.json()) as CreateTaskBody;
-    } catch {
-      throw new ApiError(400, "INVALID_JSON", "Invalid JSON body");
-    }
-
-    const listId = typeof body.listId === "string" ? body.listId.trim() : "";
-    const title = typeof body.title === "string" ? body.title.trim() : "";
-    const description =
-      body.description === undefined
-        ? undefined
-        : body.description === null
-          ? null
-          : typeof body.description === "string"
-            ? body.description.trim()
-            : undefined;
-    const priority = body.priority;
-    const status = body.status;
-
-    const details: Record<string, string> = {};
-
-    if (!listId) {
-      details.listId = "listId is required";
-    }
-
-    if (title.length < 2) {
-      details.title = "Title must be at least 2 characters";
-    }
-
-    if (!isPriority(priority)) {
-      details.priority = "Priority must be LOW, MEDIUM, or HIGH";
-    }
-
-    if (!isStatus(status)) {
-      details.status = "Status must be TODO, IN_PROGRESS, or DONE";
-    }
-
-    if (
-      body.description !== undefined &&
-      body.description !== null &&
-      typeof body.description !== "string"
-    ) {
-      details.description = "Description must be a string";
-    }
-
-    const dueDate = parseDueDate(body.dueDate, details);
-
-    if (Object.keys(details).length > 0) {
-      throw new ApiError(422, "VALIDATION_ERROR", "Validation error", details);
-    }
+    const body = await parseJsonBodyOrThrow(request, createTaskBodySchema);
+    const listId = body.listId as string;
+    const title = body.title as string;
+    const description = body.description as string | null | undefined;
+    const dueDateInput = body.dueDate as string | null | undefined;
+    const priority = body.priority as "LOW" | "MEDIUM" | "HIGH";
+    const status = body.status as "TODO" | "IN_PROGRESS" | "DONE";
 
     await getTaskListOrThrow(listId, currentUser.id);
+
+    const dueDate =
+      dueDateInput === undefined
+        ? undefined
+        : dueDateInput === null
+          ? null
+          : new Date(dueDateInput);
 
     const completedAt = status === "DONE" ? new Date() : null;
 
@@ -210,8 +274,8 @@ export async function POST(request: NextRequest) {
         title,
         description: description ?? null,
         dueDate: dueDate ?? null,
-        priority: priority as TaskPriority,
-        status: status as TaskStatus,
+        priority,
+        status,
         completedAt
       },
       select: {
@@ -232,3 +296,9 @@ export async function POST(request: NextRequest) {
     return handleApiError(err);
   }
 }
+
+registerRouteContract(openApi);
+
+
+
+

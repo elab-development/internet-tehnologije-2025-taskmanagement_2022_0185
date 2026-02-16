@@ -3,10 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "openapi:index": "node scripts/generate-openapi-route-index.mjs",
+    "predev": "npm run openapi:index",
+    "prebuild": "npm run openapi:index",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && npm run openapi:index",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "test:setup": "node scripts/test-setup.js",
@@ -17,12 +20,15 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@prisma/client": "^5.10.2",
     "bcrypt": "^5.1.1",
     "jsonwebtoken": "^9.0.2",
     "next": "14.2.4",
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "swagger-ui-dist": "^5.21.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
