@@ -10,6 +10,7 @@ import Modal from './Modal'
 import Select from './Select'
 import Spinner from './Spinner'
 import TaskCard from './TaskCard'
+import TaskStatusChart from './TaskStatusChart'
 import type { SidebarTaskList } from './TaskListItem'
 import TextField from './TextField'
 
@@ -497,10 +498,11 @@ export default function TaskPanel({ activeList, hasNoLists, isLoadingLists }: Ta
 
   if (!activeList) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
           {hasNoLists ? 'You do not have any lists yet. Create one to get started.' : 'Select a list to view tasks.'}
         </div>
+        <TaskStatusChart hasActiveList={false} isLoading={isLoadingLists} tasks={[]} />
       </div>
     )
   }
@@ -569,6 +571,8 @@ export default function TaskPanel({ activeList, hasNoLists, isLoadingLists }: Ta
             </Button>
           </div>
         </section>
+
+        <TaskStatusChart hasActiveList isLoading={isLoadingLists || isLoadingTasks} tasks={tasks} />
 
         {isLoadingLists || isLoadingTasks ? (
           <div className="flex justify-center py-8">
