@@ -26,6 +26,45 @@ beforeEach(() => {
   sendAddedToTeamEmailMock.mockReset();
 });
 
+describe("Security headers", () => {
+  it("sets CORS headers for an allowed origin", async () => {
+    const response = await apiFetch("/api/health", {
+      headers: {
+        Origin: "http://localhost:5173"
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+    expect(response.headers.get("access-control-allow-methods")).toContain("GET");
+    expect(response.headers.get("access-control-allow-headers")).toContain("Authorization");
+  });
+
+  it("does not expose CORS allow-origin for disallowed origins", async () => {
+    const response = await apiFetch("/api/health", {
+      headers: {
+        Origin: "http://evil.example"
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers preflight requests for allowed origins", async () => {
+    const response = await apiFetch("/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5173",
+        "Access-Control-Request-Method": "GET"
+      }
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+  });
+});
+
 function uniqueEmail(prefix: string) {
   return `${prefix}+${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`;
 }

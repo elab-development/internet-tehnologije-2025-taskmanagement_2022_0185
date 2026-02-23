@@ -23,6 +23,7 @@ Email variables (team invite notifications):
 - `BREVO_SENDER_EMAIL`
 - `BREVO_SENDER_NAME` (default: `Task App`)
 - `BREVO_SANDBOX` (`true` or `false`, default: `false`)
+- `CORS_ALLOWED_ORIGINS` (optional, comma-separated; default: `http://localhost:5173`)
 
 When `BREVO_SANDBOX=true`, backend sends Brevo transactional requests with `X-Sib-Sandbox: drop`, so requests are validated by Brevo without actual delivery.
 `BREVO_SENDER_EMAIL` must be a valid sender identity verified in your Brevo account.
@@ -133,6 +134,44 @@ When team `OWNER` adds a member via `POST /api/teams/:teamId/members`, backend s
 `Added to team: {teamName}`.
 
 Email delivery is a side-effect: if Brevo call fails, member creation still succeeds and API response remains unchanged.
+
+## Security protections
+
+The project covers multiple common attack categories with concrete protections:
+
+1. IDOR / authorization checks
+- Backend enforces ownership or team membership before returning/updating/deleting protected resources.
+- Evidence:
+  - `backend/lib/task-lists.ts` (`getTaskListOrThrow`)
+  - `backend/lib/tasks.ts` (`getTaskOrThrow`)
+  - `backend/lib/teams.ts` (`requireTeamMember`, `requireTeamOwner`)
+
+2. SQL injection mitigation
+- Data access uses Prisma ORM query builders (`findUnique`, `findMany`, `create`, `update`, `delete`, etc.) without raw SQL interpolation in API code.
+- Evidence:
+  - `backend/lib/prisma.ts` (single Prisma client entry point)
+  - `backend/app/api/**/route.ts` and `backend/lib/**` Prisma usage
+
+3. Input validation hardening
+- Request body/query/params are parsed with Zod and rejected with consistent 400/422 API errors.
+- Evidence:
+  - `backend/lib/openapi/contract.ts` (`parseJsonBodyOrThrow`, `parseQueryOrThrow`, `parseParamsOrThrow`)
+  - Route contracts in `backend/app/api/**/route.ts`
+
+4. CORS allowlist (explicit)
+- API responses now include CORS headers only for allowed origins, with constrained methods/headers.
+- Configurable via `CORS_ALLOWED_ORIGINS`.
+- Evidence:
+  - `backend/middleware.ts`
+
+5. XSS baseline on frontend
+- React escapes interpolated values by default, and codebase does not use raw HTML rendering (`dangerouslySetInnerHTML`).
+- Evidence:
+  - `frontend/src/components/TaskCard.tsx` (task text rendered as JSX text nodes)
+
+6. CSRF context
+- Auth uses Bearer token in `Authorization` header (`backend/lib/auth.ts`), not cookie-session auth, which reduces classic browser CSRF surface.
+- Note: HTTPS and strict token handling are still required in production.
 
 ## Running tests
 
