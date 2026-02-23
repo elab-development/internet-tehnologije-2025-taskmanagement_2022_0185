@@ -11,11 +11,13 @@ RUN apt-get update -y \
 
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
-RUN npm install --ignore-scripts
+RUN npm ci --include=dev --ignore-scripts
 
 COPY . .
-RUN npm rebuild && npm run postinstall
+RUN npm rebuild && npm run postinstall && npm run build
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx next start -H 0.0.0.0 -p ${PORT:-3000}"]

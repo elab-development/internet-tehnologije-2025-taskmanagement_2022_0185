@@ -173,6 +173,29 @@ The project covers multiple common attack categories with concrete protections:
 - Auth uses Bearer token in `Authorization` header (`backend/lib/auth.ts`), not cookie-session auth, which reduces classic browser CSRF surface.
 - Note: HTTPS and strict token handling are still required in production.
 
+## CI/CD (GitHub Actions + Render gating)
+
+Workflow file: `.github/workflows/ci.yml` (name: `CI`)
+
+CI runs automatically on:
+- every `push`
+- every `pull_request`
+
+CI jobs (minimal smoke):
+1. `frontend-build` (`npm ci` + `npm run build` in `frontend`)
+2. `backend-build` (`npm ci` + `npm run build` in `backend`, with `JWT_SECRET=ci-secret`)
+3. `backend-docker-build` (`docker build ./backend`, no image push)
+
+Deployment model:
+- Render remains the deployment layer.
+- GitHub Actions does not trigger deploy directly.
+- Configure Render to wait for successful GitHub checks before deploying.
+
+Branch protection (`main`) recommendation:
+1. Enable `Require status checks to pass before merging`.
+2. Add required check: `CI`.
+3. Optional: enable `Require branches to be up to date before merging`.
+
 ## Running tests
 
 Local:
