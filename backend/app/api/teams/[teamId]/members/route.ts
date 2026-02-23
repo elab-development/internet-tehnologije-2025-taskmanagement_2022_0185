@@ -167,6 +167,11 @@ export async function POST(
         teamName: team.name,
         inviterEmail: currentUser.email
       });
+      console.info("Added-to-team email sent", {
+        teamId: parsedParams.teamId,
+        userId: user.id,
+        toEmail: user.email
+      });
     } catch (emailError) {
       console.error("Failed to send added-to-team email", {
         teamId: parsedParams.teamId,
