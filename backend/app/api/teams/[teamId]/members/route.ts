@@ -4,6 +4,7 @@ import { requireAuthUser } from "@/lib/auth";
 import { normalizeEmail, isValidEmail } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 import { requireTeamOwner } from "@/lib/teams";
+import { sendAddedToTeamEmail } from "@/lib/email";
 import {
   defineRouteContract,
   registerRouteContract,
@@ -83,6 +84,21 @@ const openApi = defineRouteContract({
   }
 });
 
+function getDisplayName(user: {
+  firstName: string | null;
+  lastName: string | null;
+}) {
+  const fullName = [user.firstName, user.lastName]
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && part.trim().length > 0
+    )
+    .join(" ")
+    .trim();
+
+  return fullName || undefined;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { teamId: string } }
@@ -90,9 +106,9 @@ export async function POST(
   try {
     const currentUser = await requireAuthUser(request);
     const parsedParams = parseParamsOrThrow(params, teamParamsSchema);
-    await requireTeamOwner(parsedParams.teamId, currentUser.id);
+    const { team } = await requireTeamOwner(parsedParams.teamId, currentUser.id);
     const body = await parseJsonBodyOrThrow(request, addMemberBodySchema);
-    const emailInput = body.email as string;
+    const emailInput = body.email;
 
     const email = normalizeEmail(emailInput);
     const user = await prisma.user.findUnique({
@@ -143,6 +159,21 @@ export async function POST(
         }
       }
     });
+
+    try {
+      await sendAddedToTeamEmail({
+        toEmail: user.email,
+        toName: getDisplayName(user),
+        teamName: team.name,
+        inviterEmail: currentUser.email
+      });
+    } catch (emailError) {
+      console.error("Failed to send added-to-team email", {
+        teamId: parsedParams.teamId,
+        userId: user.id,
+        error: emailError
+      });
+    }
 
     return NextResponse.json({ member }, { status: 201 });
   } catch (err) {

@@ -15,9 +15,8 @@ services:
   backend:
     build:
       context: ./backend
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/task_management
-      JWT_SECRET: change-me
+    env_file:
+      - ./.env.example
     depends_on:
       - db
     ports:
