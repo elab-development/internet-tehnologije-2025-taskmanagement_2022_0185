@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addMember,
   apiFetch,
@@ -12,7 +12,19 @@ import {
   login
 } from "./helpers";
 
+const { sendAddedToTeamEmailMock } = vi.hoisted(() => ({
+  sendAddedToTeamEmailMock: vi.fn()
+}));
+
+vi.mock("@/lib/email", () => ({
+  sendAddedToTeamEmail: sendAddedToTeamEmailMock
+}));
+
 const PASSWORD = "password123";
+
+beforeEach(() => {
+  sendAddedToTeamEmailMock.mockReset();
+});
 
 function uniqueEmail(prefix: string) {
   return `${prefix}+${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`;
@@ -505,6 +517,14 @@ describe("Teams and members", () => {
       body: { email: memberUser.email }
     });
     expect(addResponse.status).toBe(201);
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toEmail: memberUser.email,
+        teamName: "Add Team",
+        inviterEmail: owner.email
+      })
+    );
 
     const duplicateResponse = await apiFetch(`/api/teams/${team.id}/members`, {
       method: "POST",
@@ -512,6 +532,7 @@ describe("Teams and members", () => {
       body: { email: memberUser.email }
     });
     await assertError(duplicateResponse, 409, "ALREADY_MEMBER");
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledTimes(1);
 
     const missingResponse = await apiFetch(`/api/teams/${team.id}/members`, {
       method: "POST",
@@ -519,6 +540,7 @@ describe("Teams and members", () => {
       body: { email: "missing@example.com" }
     });
     await assertError(missingResponse, 404, "USER_NOT_FOUND");
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledTimes(1);
 
     const forbidden = await apiFetch(`/api/teams/${team.id}/members`, {
       method: "POST",
@@ -526,6 +548,24 @@ describe("Teams and members", () => {
       body: { email: memberUser.email }
     });
     await assertError(forbidden, 403, "FORBIDDEN");
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns success when invite email sending fails", async () => {
+    const owner = await createUserAndLogin("add-owner-email-fail");
+    const memberUser = await createUser(uniqueEmail("add-member-email-fail"), PASSWORD, "Mem", "User");
+    const team = await createTeam(owner.token, "Add Team Email Fail", "desc");
+
+    sendAddedToTeamEmailMock.mockRejectedValueOnce(new Error("Brevo unavailable"));
+
+    const response = await apiFetch(`/api/teams/${team.id}/members`, {
+      method: "POST",
+      headers: authHeader(owner.token),
+      body: { email: memberUser.email }
+    });
+
+    expect(response.status).toBe(201);
+    expect(sendAddedToTeamEmailMock).toHaveBeenCalledTimes(1);
   });
 
   it("owner can change roles and last owner is protected", async () => {

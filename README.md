@@ -10,9 +10,22 @@ Copy the example env to the backend folder:
 copy .env.example backend\.env
 ```
 
+For Docker Compose, backend service loads env vars directly from root `.env.example` via `env_file`.
+In Docker-first setup, `DATABASE_URL` in root `.env.example` should point to Compose DB host (`db`), e.g. `postgresql://postgres:postgres@db:5432/task_management`.
+If you run backend outside Docker, use a local env override with `localhost` DB host.
+
 Required variables:
 - `DATABASE_URL`
 - `JWT_SECRET`
+
+Email variables (team invite notifications):
+- `BREVO_API_KEY`
+- `BREVO_SENDER_EMAIL`
+- `BREVO_SENDER_NAME` (default: `Task App`)
+- `BREVO_SANDBOX` (`true` or `false`, default: `false`)
+
+When `BREVO_SANDBOX=true`, backend sends Brevo transactional requests with `X-Sib-Sandbox: drop`, so requests are validated by Brevo without actual delivery.
+`BREVO_SENDER_EMAIL` must be a valid sender identity verified in your Brevo account.
 
 ## Test environment
 
@@ -80,6 +93,13 @@ List tasks due soon:
 ```
 curl -H "Authorization: Bearer <TOKEN>" "http://localhost:3000/api/tasks?listId=<LIST_ID>&due=soon"
 ```
+
+## Team invite email notification
+
+When team `OWNER` adds a member via `POST /api/teams/:teamId/members`, backend sends a Brevo transactional email with subject:
+`Added to team: {teamName}`.
+
+Email delivery is a side-effect: if Brevo call fails, member creation still succeeds and API response remains unchanged.
 
 ## Running tests
 

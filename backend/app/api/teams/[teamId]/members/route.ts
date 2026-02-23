@@ -4,10 +4,26 @@ import { requireAuthUser } from "@/lib/auth";
 import { normalizeEmail, isValidEmail } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 import { requireTeamOwner } from "@/lib/teams";
+import { sendAddedToTeamEmail } from "@/lib/email";
 
 type AddMemberBody = {
   email?: unknown;
 };
+
+function getDisplayName(user: {
+  firstName: string | null;
+  lastName: string | null;
+}) {
+  const fullName = [user.firstName, user.lastName]
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && part.trim().length > 0
+    )
+    .join(" ")
+    .trim();
+
+  return fullName || undefined;
+}
 
 export async function POST(
   request: NextRequest,
@@ -15,7 +31,7 @@ export async function POST(
 ) {
   try {
     const currentUser = await requireAuthUser(request);
-    await requireTeamOwner(params.teamId, currentUser.id);
+    const { team } = await requireTeamOwner(params.teamId, currentUser.id);
     let body: AddMemberBody;
 
     try {
@@ -84,6 +100,21 @@ export async function POST(
         }
       }
     });
+
+    try {
+      await sendAddedToTeamEmail({
+        toEmail: user.email,
+        toName: getDisplayName(user),
+        teamName: team.name,
+        inviterEmail: currentUser.email
+      });
+    } catch (emailError) {
+      console.error("Failed to send added-to-team email", {
+        teamId: params.teamId,
+        userId: user.id,
+        error: emailError
+      });
+    }
 
     return NextResponse.json({ member }, { status: 201 });
   } catch (err) {
