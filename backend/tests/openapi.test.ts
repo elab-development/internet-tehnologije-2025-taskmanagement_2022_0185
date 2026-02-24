@@ -80,4 +80,25 @@ describe("openapi docs", () => {
     expect(response.text).toContain("/api/openapi");
     expect(response.text).toContain("SwaggerUIBundle");
   });
+
+  it("uses forwarded origin when proxy headers are present", async () => {
+    const response = await apiFetch("/api/openapi", {
+      headers: {
+        Host: "internal.local",
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "backend-ghnh.onrender.com"
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.json).toBeTruthy();
+
+    const document = response.json as {
+      servers?: Array<{ url?: string }>;
+    };
+
+    expect(document.servers?.[0]?.url).toBe(
+      "https://backend-ghnh.onrender.com"
+    );
+  });
 });
