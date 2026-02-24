@@ -1,18 +1,52 @@
-# Task Management Backend
+# Task Management Application
 
-Backend API for the Task Management App (Next.js App Router + Prisma + PostgreSQL + JWT).
+Full-stack task management application with:
+- frontend UI for task/list/team management
+- backend REST API (authentication, authorization, business logic)
+- PostgreSQL database persistence
+
+## Application overview
+
+The application supports:
+- user registration and login with JWT authentication
+- personal and team task lists
+- task CRUD with status/priority/due-date filters
+- team management (members, roles, leave flow)
+- generated API documentation via Swagger/OpenAPI
+- optional email notifications for team invites (Brevo)
+
+## Technologies used
+
+Backend:
+- Next.js App Router (Node runtime)
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- Zod + `@asteasolutions/zod-to-openapi`
+- JWT (`jsonwebtoken`) + password hashing (`bcrypt`)
+
+Frontend:
+- React + TypeScript
+- Vite
+- Tailwind CSS
+- Google Charts (manual loader integration)
+
+DevOps/Infra:
+- Docker + Docker Compose
+- GitHub Actions CI
+- Render deployment (gated by CI checks)
 
 ## Environment setup
 
-Copy the example env to the backend folder:
+For Docker Compose, backend service reads env vars from root `/.env.example` via `env_file`.
+In Docker-first setup, `DATABASE_URL` should point to Compose DB host (`db`):
 
 ```
-copy .env.example backend\.env
+DATABASE_URL=postgresql://postgres:postgres@db:5432/task_management
+JWT_SECRET=change-me
 ```
 
-For Docker Compose, backend service loads env vars directly from root `.env.example` via `env_file`.
-In Docker-first setup, `DATABASE_URL` in root `.env.example` should point to Compose DB host (`db`), e.g. `postgresql://postgres:postgres@db:5432/task_management`.
-If you run backend outside Docker, use a local env override with `localhost` DB host.
+If you run backend outside Docker, use a local env override with `localhost` DB host (for example in `backend/.env`).
 
 Required variables:
 - `DATABASE_URL`
@@ -45,11 +79,31 @@ docker compose exec -e DATABASE_URL_TEST=postgresql://postgres:postgres@db:5432/
 
 ## Local development
 
+Prerequisites:
+- Node.js 20+
+- PostgreSQL (local) or Dockerized DB
+
+Start database (optional via Docker):
+
+```
+docker compose up -d db
+```
+
+Backend:
+
 ```
 cd backend
 npm install
 npx prisma migrate dev
 npx prisma db seed
+npm run dev
+```
+
+Frontend (second terminal):
+
+```
+cd frontend
+npm install
 npm run dev
 ```
 
@@ -70,12 +124,22 @@ http://localhost:3000/api/openapi
 
 ## Docker
 
-From repo root:
+Docker Compose starts three services:
+- `db` (PostgreSQL 16)
+- `backend` (Next.js API, port `3000`)
+- `frontend` (Vite dev server, port `5173`)
+
+From repository root:
 
 ```
 docker compose up --build -d
-docker compose exec backend npx prisma migrate deploy
 docker compose exec backend npx prisma db seed
+```
+
+Stop services:
+
+```
+docker compose down
 ```
 
 Health check:
@@ -195,6 +259,23 @@ Branch protection (`main`) recommendation:
 1. Enable `Require status checks to pass before merging`.
 2. Add required check: `CI`.
 3. Optional: enable `Require branches to be up to date before merging`.
+
+## Branching model
+
+The project uses a standard Git branching strategy:
+
+1. `main`
+- stable production-ready version
+- only reviewed and tested changes are merged here
+
+2. `dev`
+- integration branch for ongoing work
+- feature branches are merged into `dev` before promoting to `main`
+
+3. Example feature branches used in this project
+- `feature/email-notification` (team invite email via Brevo)
+- `feature/google-charts` (task status pie chart visualization)
+- `feature/swagger` (runtime-generated OpenAPI + Swagger UI)
 
 ## Running tests
 
